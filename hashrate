@@ -1,0 +1,14 @@
+#!/bin/bash
+source config.sh
+
+for I in $(seq $NET_START $NET_END)
+do
+  echo -n "$I: "
+  RES=$(cgminer-api stats ${BASE_NET}.$I | grep  '\[GHS ')
+  if [ "$?" -eq "0" ]; then
+    echo $RES
+  else
+    echo Offline
+  fi
+done
+

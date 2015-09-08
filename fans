@@ -1,0 +1,17 @@
+#!/bin/bash
+source config.sh
+
+for I in $(seq $NET_START $NET_END)
+do
+  echo -n "$I: "
+  RES=$(cgminer-api stats ${BASE_NET}.$I | grep  '\[fan')
+  if [ "$?" -eq "0" ]; then
+    FANNUM=$(echo $RES | grep 'fan_num' | cut -f2 -d">" | cut -f2 -d" ")
+    ((FANNUM++))
+    RES=$(echo $RES | sed -e 's/\[/\n\[/g' | grep -v 'fan_num' | head -$FANNUM)
+    echo $RES
+  else
+    echo Offline
+  fi
+done
+

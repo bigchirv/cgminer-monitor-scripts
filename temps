@@ -1,0 +1,17 @@
+#!/bin/bash
+source config.sh
+
+for I in $(seq $NET_START $NET_END)
+do
+  echo -n "$I: "
+  RES=$(cgminer-api stats ${BASE_NET}.$I | grep  '\[temp')
+  if [ "$?" -eq "0" ]; then
+    TEMPNUM=$(echo $RES | grep 'temp_num' | cut -f2 -d">" | cut -f2 -d" ")
+    ((TEMPNUM++))
+    RES=$(echo $RES | sed -e 's/\[/\n\[/g' | grep -v 'temp_num' | head -$TEMPNUM)
+    echo $RES
+  else
+    echo Offline
+  fi
+done
+
