@@ -95,7 +95,7 @@ fi
 
 # main code
 CONFIGFILE="config.sh"
-COMMAND="usage"
+COMMAND="hashrate"
 
 while [[ $# -ge 1 ]]; do
   KEY="$1"
