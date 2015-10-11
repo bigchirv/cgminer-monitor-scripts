@@ -7,4 +7,4 @@ A small set of cgminer scripts for monitoring mining farms.
 
 ## Usage
 
-Edit the config.sh file and set your parameters. Run the scripts within its folder.
+Edit the config.sh file and set your parameters. Run the script within its folder.

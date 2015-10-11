@@ -1,0 +1,172 @@
+#!/bin/bash
+CONFIGFILE="config.sh"
+COMMAND="hashrate"
+while [[ $# > 1 ]]; do
+  key="$1"
+
+  case $key in
+    -c|--config)
+      CONFIGFILE="$2"
+      shift
+      ;;
+    -f|--fans)
+      COMMAND="fans"
+      ;;
+    -h|--hashrate)
+      COMMAND="hashrate"
+      ;;
+    -l|--lcd)
+      COMMAND="lcd"
+      ;;
+    -m|--minernode)
+      MINERNODE="$2"
+      shift
+      ;;
+    -r|--reboot)
+      COMMAND="reboot"
+      ;;
+    -t|--temp)
+      COMMAND="temp"
+      ;;
+    -x|--listx)
+      COMMAND="listx"
+      ;;
+    -y|--yes)
+      AUTOCONFIRM="TRUE"
+      ;;
+    -z|--zeroreboot)
+      COMMAND="zeroreboot"
+      ;;
+    *)
+      # unknown option
+      ;;
+  esac
+  shift
+done
+
+source $CONFIGFILE
+
+if [ "$MINERNODE" != "" ]; then
+  NET_START=$MINERNODE
+  NET_END=$MINERNODE
+fi
+
+function _usage() {
+cat <<EOF
+Usage: $0 [options]
+
+-c|--config <conffile>  Selects the config file to use. Defaults to
+                        config.sh
+-f|--fans               Shows the fans RPMs information
+-h|--hashrate           Shows the miner(s) hashrate
+-l|--lcd                Shows the cgminer's raw LCD output
+-m|--minernode <octect> Specify a node of the network (4th octet in
+                        its IP address)
+-r|--reboot             Reboots one (-m) or all the nodes of a
+                        network
+-t|--temp               Shows the temperature information
+-x|--listx              Shows a counter of 'x' in every acs
+-y|--yes                Autoconfirms every command. The script will
+                        not ask for confirmations
+-z|--zeroreboot         Reboots one (-m) or all the nodes of a
+                        network on 0 GHs
+-h| --help           Shows this help text.
+EOF
+}
+
+function _confirmReboot() {
+#$1 especify a node
+MSG="Please confirm you want to reboot from $NET_START to $NET_END"
+if [ $NET_START = $NET_END ]; then
+  MSG="Please confirm you want to reboot $NET_START"
+elif [ "$1" != "" ]; then
+  MSG="Please confirm you want to reboot this node ($1)"
+fi
+
+if [ "$AUTOCONFIRM" != "TRUE" ]; then
+  read -p "$MSG: (y/n) "
+else
+  REPLY="y"
+fi
+
+if [ $REPLY != "y" ]; then
+  echo "Cancelled."
+  exit 1
+fi
+}
+
+function _getStats() {
+# $1 Miner node IP
+# $2 common string
+# $3 grep string
+_IP="$1"
+_STR="$2"
+_GREPSTR="\[$2"
+if [ "$3" != "" ]; then
+  _GREPSTR="$3"
+fi
+_CMD='stats'
+if [ "$2" == "lcd" ]; then
+  _CMD='lcd'
+  _GREPSTR='\['
+fi
+
+RES=$(cgminer-api $_CMD $_IP | grep -i "$_GREPSTR")
+if [ "$?" -eq "0" ]; then
+  if [ "$_STR" == "fan" ] || [ "$_STR" == "temp" ]; then
+    NUM=$(echo $RES | grep "${_STR}_num" | cut -f2 -d">" | cut -f2 -d" ")
+    ((NUM++))
+    RES=$(echo $RES | sed -e 's/\[/\n\[/g' | grep -v "${_STR}_num" | head -$NUM)
+  elif [ "$_GREPSTR" == "\[GHS 5s" ] && [ "$(echo $RES | cut -f4 -d' ' | cut -f1 -d'.')" -eq "0" ]; then
+    echo -n "Hashrate 5s reporting 0 GHs. "
+    _confirmReboot $_IP
+    _reboot $_IP
+  fi
+  echo $RES
+else
+  echo Offline
+fi
+}
+
+
+function _reboot() {
+#$1 Miner node IP
+_IP="$1"
+RES=$(sshpass -p admin ssh -oStrictHostKeyChecking=no -l root $_IP /sbin/reboot >&2 2> /dev/null)
+if [ "$?" -eq "0" ]; then
+  echo Rebooting
+else
+  echo Error
+fi
+}
+
+for I in $(seq $NET_START $NET_END)
+do
+  echo -n "$I: "
+  IP=${BASE_NET}.$I
+  case $COMMAND in
+    fans)
+      _getStats $IP fan
+      ;;
+    hashrate)
+      _getStats $IP GHS
+      ;;
+    lcd)
+      _getStats $IP lcd
+      ;;
+    reboot)
+      _confirmReboot
+      _reboot $IP
+      ;;
+    temp)
+      _getStats $IP temp
+      ;;
+    listx)
+      _getStats $IP chain_acs
+      ;;
+    zeroreboot)
+      _getStats $IP GHS\ 5s
+      ;;
+  esac
+done
+
