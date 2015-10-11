@@ -1,56 +1,5 @@
 #!/bin/bash
-CONFIGFILE="config.sh"
-COMMAND="hashrate"
-while [[ $# > 1 ]]; do
-  key="$1"
-
-  case $key in
-    -c|--config)
-      CONFIGFILE="$2"
-      shift
-      ;;
-    -f|--fans)
-      COMMAND="fans"
-      ;;
-    -h|--hashrate)
-      COMMAND="hashrate"
-      ;;
-    -l|--lcd)
-      COMMAND="lcd"
-      ;;
-    -m|--minernode)
-      MINERNODE="$2"
-      shift
-      ;;
-    -r|--reboot)
-      COMMAND="reboot"
-      ;;
-    -t|--temp)
-      COMMAND="temp"
-      ;;
-    -x|--listx)
-      COMMAND="listx"
-      ;;
-    -y|--yes)
-      AUTOCONFIRM="TRUE"
-      ;;
-    -z|--zeroreboot)
-      COMMAND="zeroreboot"
-      ;;
-    *)
-      # unknown option
-      ;;
-  esac
-  shift
-done
-
-source $CONFIGFILE
-
-if [ "$MINERNODE" != "" ]; then
-  NET_START=$MINERNODE
-  NET_END=$MINERNODE
-fi
-
+#set -x
 function _usage() {
 cat <<EOF
 Usage: $0 [options]
@@ -58,7 +7,7 @@ Usage: $0 [options]
 -c|--config <conffile>  Selects the config file to use. Defaults to
                         config.sh
 -f|--fans               Shows the fans RPMs information
--h|--hashrate           Shows the miner(s) hashrate
+-h|--hashrate           Shows the miner(s) hashrate (default action)
 -l|--lcd                Shows the cgminer's raw LCD output
 -m|--minernode <octect> Specify a node of the network (4th octet in
                         its IP address)
@@ -67,12 +16,14 @@ Usage: $0 [options]
 -t|--temp               Shows the temperature information
 -x|--listx              Shows a counter of 'x' in every acs
 -y|--yes                Autoconfirms every command. The script will
-                        not ask for confirmations
+                        not ask for confirmations on every action
 -z|--zeroreboot         Reboots one (-m) or all the nodes of a
                         network on 0 GHs
--h| --help           Shows this help text.
+--help                  Shows this help text.
 EOF
+exit 0
 }
+
 
 function _confirmReboot() {
 #$1 especify a node
@@ -90,10 +41,23 @@ else
 fi
 
 if [ $REPLY != "y" ]; then
-  echo "Cancelled."
+  echo "Cancelled"
   exit 1
 fi
 }
+
+
+function _reboot() {
+#$1 Miner node IP
+_IP="$1"
+RES=$(sshpass -p admin ssh -oStrictHostKeyChecking=no -l root $_IP /sbin/reboot >&2 2> /dev/null)
+if [ "$?" -eq "0" ]; then
+  echo Rebooting
+else
+  echo Error
+fi
+}
+
 
 function _getStats() {
 # $1 Miner node IP
@@ -129,16 +93,71 @@ fi
 }
 
 
-function _reboot() {
-#$1 Miner node IP
-_IP="$1"
-RES=$(sshpass -p admin ssh -oStrictHostKeyChecking=no -l root $_IP /sbin/reboot >&2 2> /dev/null)
-if [ "$?" -eq "0" ]; then
-  echo Rebooting
-else
-  echo Error
+# main code
+CONFIGFILE="config.sh"
+COMMAND="usage"
+
+while [[ $# -ge 1 ]]; do
+  KEY="$1"
+  case $KEY in
+    -c|--config)
+      CONFIGFILE="$2"
+      shift
+      ;;
+    -f|--fans)
+      COMMAND="fans"
+      ;;
+    -h|--hashrate)
+      COMMAND="hashrate"
+      ;;
+    -l|--lcd)
+      COMMAND="lcd"
+      ;;
+    -m|--minernode)
+      MINERNODE="$2"
+      shift
+      ;;
+    -r|--reboot)
+      COMMAND="reboot"
+      ;;
+    -t|--temp)
+      COMMAND="temp"
+      ;;
+    -x|--listx)
+      COMMAND="listx"
+      ;;
+    -y|--yes)
+      AUTOCONFIRM="TRUE"
+      ;;
+    -z|--zeroreboot)
+      COMMAND="zeroreboot"
+      ;;
+    --help)
+      COMMAND="usage"
+      ;;
+    *)
+      #Nothing
+      ;;
+  esac
+  shift
+done
+
+if [ "$COMMAND" == "usage" ]; then
+  _usage
 fi
-}
+
+if [ ! -f $CONFIGFILE ]; then
+  echo "$CONFIGFILE does not exists."
+  echo "Either create it or specify your config file with -c"
+  exit 1
+fi
+
+source $CONFIGFILE
+
+if [ "$MINERNODE" != "" ]; then
+  NET_START=$MINERNODE
+  NET_END=$MINERNODE
+fi
 
 for I in $(seq $NET_START $NET_END)
 do
