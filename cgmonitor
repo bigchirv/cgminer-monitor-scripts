@@ -5,20 +5,22 @@ cat <<EOF
 Usage: $0 [options]
 
 -c|--config <conffile>  Selects the config file to use. Defaults to
-                        config.sh
--f|--fans               Shows the fans RPMs information
--h|--hashrate           Shows the miner(s) hashrate (default action)
--l|--lcd                Shows the cgminer's raw LCD output
--m|--minernode <octect> Specify a node of the network (4th octet in
-                        its IP address)
--r|--reboot             Reboots one (-m) or all the nodes of a
-                        network
--t|--temp               Shows the temperature information
--x|--listx              Shows a counter of 'x' in every acs
+                        config.sh.
+-e|--endip              IP range ends on this IP.
+-f|--fans               Shows the fans RPMs information.
+-h|--hashrate           Shows the miner(s) hashrate (default action).
+-l|--lcd                Shows the cgminer's raw LCD output.
+-n|--netnode <ip_addr>  Specify a node of the network (4th octet in
+                        its IP address).
+-r|--reboot             Reboots one (-n) or all the nodes of a
+                        network.
+-s|--startip            IP range starts on this IP.
+-t|--temp               Shows the temperature information.
+-x|--listx              Shows a count of 'x' in every acs.
 -y|--yes                Autoconfirms every command. The script will
                         not ask for confirmations on every action
--z|--zeroreboot         Reboots one (-m) or all the nodes of a
-                        network on 0 GHs
+-z|--zeroreboot         Reboots one (-n) or all the nodes of a
+                        network on 0 GHs.
 --help                  Shows this help text.
 EOF
 exit 0
@@ -92,16 +94,94 @@ else
 fi
 }
 
+function _generateIpAddrs() {
+# Taken from http://wp.subnetzero.org/?p=241
+IPLO=(`echo "$1" | awk '{split($1,a,"."); print a[1]" "a[2]" "a[3]" "a[4]}'`)
+IPHI=(`echo "$2" | awk '{split($1,a,"."); print a[1]" "a[2]" "a[3]" "a[4]}'`)
+OCTA=${IPLO[0]}
+OCTB=${IPLO[1]}
+OCTC=${IPLO[2]}
+OCTD=${IPLO[3]}
+OCTAHI=${IPHI[0]}
+OCTBHI=${IPHI[1]}
+OCTCHI=${IPHI[2]}
+OCTDHI=${IPHI[3]}
+OCTDMAX=255
+FINISHED=0
+
+for i in 0 1 2 3
+do
+  if [ -z "${IPLO[$i]}" ] || [ -z "${IPHI[$i]}" ]; then
+    echo "Usage: $0 [from ip] [to ip]"
+    exit 1
+  elif [ "${IPLO[$i]}" -gt "255" ] || [ "${IPHI[$i]}" -gt "255" ];then
+    echo "One of your values is broken (greater than 255)."
+    exit 1
+  fi
+done
+
+until [ "$FINISHED" -eq "1" ];
+do
+  if [ "$OCTA" -eq "$OCTAHI" ] &&  [ "$OCTB" -eq "$OCTBHI" ] &&  [ "$OCTC" -eq "$OCTCHI" ]; then
+    OCTDMAX=$OCTDHI
+  fi
+
+  while [ "$OCTD" -le "$OCTDMAX" ];
+  do
+    if [ "$NET_RANGE" == "" ]; then
+      NET_RANGE="$OCTA.$OCTB.$OCTC.$OCTD"
+    else
+      NET_RANGE="$NET_RANGE $OCTA.$OCTB.$OCTC.$OCTD"
+    fi
+
+    if [ "$OCTA" -eq "$OCTAHI" ] && \
+     [ "$OCTB" -eq "$OCTBHI" ] && \
+     [ "$OCTC" -eq "$OCTCHI" ] && \
+     [ "$OCTD" -eq "$OCTDHI" ]; then
+      FINISHED=1
+    fi
+    OCTD=$(( $OCTD + 1 ))
+  done
+
+  OCTC=$(( $OCTC + 1 ))
+  OCTD="0"
+
+  if [ "$OCTC" -gt "255" ]; then
+    OCTB=$(( $OCTB + 1 ))
+    OCTC="0"
+  fi
+
+  if [ "$OCTB" -gt "255" ]; then
+    OCTA=$(( $OCTA + 1 ))
+    OCTB="0"
+  fi
+
+  if [ "$OCTA" -gt "255" ]; then
+    FINISHED=1
+  fi
+done
+
+}
+
 
 # main code
 CONFIGFILE="config.sh"
 COMMAND="hashrate"
+NET_START="192.168.1.1"
+NET_END="192.168.1.254"
+NET_RANGE=""
+NET_NODE=""
+
 
 while [[ $# -ge 1 ]]; do
   KEY="$1"
   case $KEY in
     -c|--config)
       CONFIGFILE="$2"
+      shift
+      ;;
+    -e|--endip)
+      NET_END="$2"
       shift
       ;;
     -f|--fans)
@@ -113,12 +193,16 @@ while [[ $# -ge 1 ]]; do
     -l|--lcd)
       COMMAND="lcd"
       ;;
-    -m|--minernode)
-      MINERNODE="$2"
+    -n|--netnode)
+      NET_NODE="$2"
       shift
       ;;
     -r|--reboot)
       COMMAND="reboot"
+      ;;
+    -s|--startip)
+      NET_START="$2"
+      shift
       ;;
     -t|--temp)
       COMMAND="temp"
@@ -146,23 +230,20 @@ if [ "$COMMAND" == "usage" ]; then
   _usage
 fi
 
-if [ ! -f $CONFIGFILE ]; then
-  echo "$CONFIGFILE does not exists."
-  echo "Either create it or specify your config file with -c"
-  exit 1
+if [ -f $CONFIGFILE ]; then
+  source $CONFIGFILE
 fi
 
-source $CONFIGFILE
-
-if [ "$MINERNODE" != "" ]; then
-  NET_START=$MINERNODE
-  NET_END=$MINERNODE
+if [ "$NET_NODE" != "" ]; then
+  NET_START=$NET_NODE
+  NET_END=$NET_NODE
 fi
 
-for I in $(seq $NET_START $NET_END)
+_generateIpAddrs $NET_START $NET_END
+
+for IP in $NET_RANGE
 do
-  echo -n "$I: "
-  IP=${BASE_NET}.$I
+  echo -n "$IP: "
   case $COMMAND in
     fans)
       _getStats $IP fan
