@@ -56,7 +56,7 @@ RES=$(sshpass -p admin ssh -oStrictHostKeyChecking=no -l root $_IP /sbin/reboot 
 if [ "$?" -eq "0" ]; then
   echo Rebooting
 else
-  echo Error
+  echo "Error: $?"
 fi
 }
 
